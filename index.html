@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DCF Valuation Tool</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0d14; color: #e0e0e0; font-family: 'Courier New', monospace; padding: 40px; }
+    h1 { color: #e879f9; font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: #888; margin-bottom: 32px; font-size: 13px; }
+    .search-row { display: flex; gap: 12px; margin-bottom: 32px; }
+    input { background: #1a1a2e; border: 1px solid #2a1a3e; color: #e879f9;
+            padding: 10px 16px; font-size: 16px; border-radius: 4px;
+            font-family: 'Courier New', monospace; outline: none; width: 200px; }
+    button { background: #7c3aed; color: white; border: none; padding: 10px 24px;
+             border-radius: 4px; cursor: pointer; font-size: 14px;
+             font-family: 'Courier New', monospace; }
+    button:hover { background: #6d28d9; }
+    .card { background: #1a1a2e; border: 1px solid #2a1a3e; border-radius: 6px;
+            padding: 24px; margin-bottom: 20px; }
+    .card h2 { color: #e879f9; font-size: 13px; letter-spacing: 2px;
+               text-transform: uppercase; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .metric { display: flex; justify-content: space-between; padding: 8px 0;
+              border-bottom: 1px solid #2a1a3e; font-size: 13px; }
+    .metric:last-child { border-bottom: none; }
+    .label { color: #888; }
+    .value { color: #e0e0e0; font-weight: bold; }
+    .value.pink { color: #e879f9; font-size: 16px; }
+    .value.green { color: #34d399; }
+    .value.red { color: #f87171; }
+    .assumption { display: flex; justify-content: space-between;
+                  align-items: center; padding: 8px 0; border-bottom: 1px solid #2a1a3e; }
+    .assumption input { width: 100px; padding: 4px 8px; font-size: 13px; }
+    .recalc { background: #1a1a2e; border: 1px solid #7c3aed; color: #e879f9;
+              padding: 8px 20px; border-radius: 4px; cursor: pointer; margin-top: 12px;
+              font-family: 'Courier New', monospace; }
+    .error { color: #f87171; margin-top: 12px; }
+    .loading { color: #888; margin-top: 12px; }
+    #results { display: none; }
+  </style>
+</head>
+<body>
+
+<h1>DCF Valuation Tool</h1>
+<p class="subtitle">Enter a Publicly traded company's ticker to run a full discounted cash flow analysis</p>
+<p class="subtitle">Alpha Testing: Email: ltm2140@columbia.edu to report bugs and errors</p>
+<div class="search-row">
+  <input id="tickerInput" type="text" placeholder="NVDA" maxlength="6" />
+  <button onclick="fetchData()">Analyze</button>
+</div>
+<div id="status"></div>
+
+<div id="results">
+  <div class="card">
+    <h2>Market Data</h2>
+    <div class="grid">
+      <div>
+        <div class="metric"><span class="label">Ticker</span><span class="value" id="r-ticker"></span></div>
+        <div class="metric"><span class="label">Current Price</span><span class="value" id="r-price"></span></div>
+        <div class="metric"><span class="label">Shares Outstanding (M)</span><span class="value" id="r-shares"></span></div>
+        <div class="metric"><span class="label">Beta</span><span class="value" id="r-beta"></span></div>
+      </div>
+      <div>
+        <div class="metric"><span class="label">Free Cash Flow ($M)</span><span class="value" id="r-fcf"></span></div>
+        <div class="metric"><span class="label">Operating CF ($M)</span><span class="value" id="r-opcf"></span></div>
+        <div class="metric"><span class="label">CapEx ($M)</span><span class="value" id="r-capex"></span></div>
+        <div class="metric"><span class="label">Net Debt ($M)</span><span class="value" id="r-netdebt"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Assumptions  <span style="color:#888;font-size:11px">(edit and recalculate)</span></h2>
+    <div class="assumption"><span class="label">FCF Growth Rate (Yr 1-5)</span><input id="a-growth" type="number" step="0.01" /></div>
+    <div class="assumption"><span class="label">Terminal Growth Rate</span><input id="a-terminal" type="number" step="0.01" value="3" /></div>
+    <div class="assumption"><span class="label">Risk-Free Rate (%)</span><input id="a-rf" type="number" step="0.01" value="4.3" /></div>
+    <div class="assumption"><span class="label">Equity Risk Premium (%)</span><input id="a-erp" type="number" step="0.01" value="5.5" /></div>
+    <div class="assumption"><span class="label">Pre-tax Cost of Debt (%)</span><input id="a-kd" type="number" step="0.01" value="5" /></div>
+    <div class="assumption"><span class="label">Tax Rate (%)</span><input id="a-tx" type="number" step="0.01" value="21" /></div>
+    <button class="recalc" onclick="recalculate()">Recalculate</button>
+  </div>
+
+  <div class="card">
+    <h2>WACC Breakdown</h2>
+    <div class="metric"><span class="label">Cost of Equity (CAPM)</span><span class="value" id="r-coe"></span></div>
+    <div class="metric"><span class="label">After-tax Cost of Debt</span><span class="value" id="r-atd"></span></div>
+    <div class="metric"><span class="label">Equity Weight</span><span class="value" id="r-ew"></span></div>
+    <div class="metric"><span class="label">Debt Weight</span><span class="value" id="r-dw"></span></div>
+    <div class="metric"><span class="label">WACC</span><span class="value pink" id="r-wacc"></span></div>
+  </div>
+
+  <div class="card">
+    <h2>Valuation Summary</h2>
+    <div class="metric"><span class="label">Sum of PV of FCFs ($M)</span><span class="value" id="r-pvfcf"></span></div>
+    <div class="metric"><span class="label">Terminal Value ($M)</span><span class="value" id="r-tv"></span></div>
+    <div class="metric"><span class="label">PV of Terminal Value ($M)</span><span class="value" id="r-pvtv"></span></div>
+    <div class="metric"><span class="label">Enterprise Value ($M)</span><span class="value" id="r-ev"></span></div>
+    <div class="metric"><span class="label">Equity Value ($M)</span><span class="value" id="r-equity"></span></div>
+    <div class="metric"><span class="label">Intrinsic Value / Share</span><span class="value pink" id="r-iv"></span></div>
+    <div class="metric"><span class="label">Current Price</span><span class="value" id="r-cp"></span></div>
+    <div class="metric"><span class="label">Upside / (Downside)</span><span class="value" id="r-upside"></span></div>
+  </div>
+</div>
+
+<script>
+let rawData = null;
+
+function fmt(n, prefix='$', decimals=2) {
+  return prefix + n.toLocaleString('en-US', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
+}
+
+function pct(n) { return (n * 100).toFixed(2) + '%'; }
+
+async function fetchData() {
+  const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+  if (!ticker) return;
+
+  document.getElementById('status').innerHTML = '<p class="loading">Fetching data...</p>';
+  document.getElementById('results').style.display = 'none';
+
+  try {
+    const res = await fetch(`http://127.0.0.1:5000/api/dcf/${ticker}`);
+    const data = await res.json();
+    if (data.error) {
+    document.getElementById('status').innerHTML = `<p class="error">${data.error}</p>`;
+    return;
+}
+    rawData = data;
+
+    document.getElementById('r-ticker').textContent  = data.ticker;
+    document.getElementById('r-price').textContent   = fmt(data.price);
+    document.getElementById('r-shares').textContent  = fmt(data.shares, '', 0);
+    document.getElementById('r-beta').textContent    = data.beta.toFixed(2);
+    document.getElementById('r-fcf').textContent     = fmt(data.fcf, '$', 0);
+    document.getElementById('r-opcf').textContent    = fmt(data.op_cf, '$', 0);
+    document.getElementById('r-capex').textContent   = fmt(data.capex, '$', 0);
+    document.getElementById('r-netdebt').textContent = fmt(data.total_debt - data.cash, '$', 0);
+
+    document.getElementById('a-growth').value    = (data.rev_growth * 100).toFixed(2);
+    document.getElementById('r-cp').textContent  = fmt(data.price);
+
+    document.getElementById('status').innerHTML = '';
+    document.getElementById('results').style.display = 'block';
+    recalculate();
+  } catch(e) {
+    document.getElementById('status').innerHTML = '<p class="error">Error fetching data. Is Flask running?</p>';
+  }
+}
+
+
+
+function recalculate() {
+  if (!rawData) return;
+
+  const d = rawData;
+  const growth   = parseFloat(document.getElementById('a-growth').value)   / 100;
+  const terminal = parseFloat(document.getElementById('a-terminal').value)  / 100;
+  const rf       = parseFloat(document.getElementById('a-rf').value)        / 100;
+  const erp      = parseFloat(document.getElementById('a-erp').value)       / 100;
+  const kd       = parseFloat(document.getElementById('a-kd').value)        / 100;
+  const tx       = parseFloat(document.getElementById('a-tx').value)        / 100;
+  const years    = 5;
+
+  const mktcap = d.price * d.shares;
+  const coe    = rf + d.beta * erp;
+  const atd    = kd * (1 - tx);
+  const ew     = mktcap / (mktcap + d.total_debt);
+  const dw     = 1 - ew;
+  const wacc   = ew * coe + dw * atd;
+
+  if (terminal >= wacc) {
+    document.getElementById('status').innerHTML = '<p class="error">Terminal growth rate must be less than WACC</p>';
+    return;
+  }
+  let pvFCFs = 0;
+  let lastFCF = d.fcf;
+  for (let y = 1; y <= years; y++) {
+    const projFCF = d.fcf * Math.pow(1 + growth, y);
+    pvFCFs += projFCF / Math.pow(1 + wacc, y);
+    if (y === years) lastFCF = projFCF;
+  }
+
+  const tv    = (lastFCF * (1 + terminal)) / (wacc - terminal);
+  const pvTV  = tv / Math.pow(1 + wacc, years);
+  const ev    = pvFCFs + pvTV;
+  const equity= ev - d.total_debt + d.cash;
+  const iv    = equity / d.shares;
+  const upside= (iv - d.price) / d.price;
+
+  document.getElementById('r-coe').textContent   = pct(coe);
+  document.getElementById('r-atd').textContent   = pct(atd);
+  document.getElementById('r-ew').textContent    = pct(ew);
+  document.getElementById('r-dw').textContent    = pct(dw);
+  document.getElementById('r-wacc').textContent  = pct(wacc);
+  document.getElementById('r-pvfcf').textContent = fmt(pvFCFs, '$', 0);
+  document.getElementById('r-tv').textContent    = fmt(tv, '$', 0);
+  document.getElementById('r-pvtv').textContent  = fmt(pvTV, '$', 0);
+  document.getElementById('r-ev').textContent    = fmt(ev, '$', 0);
+  document.getElementById('r-equity').textContent= fmt(equity, '$', 0);
+  document.getElementById('r-iv').textContent    = fmt(iv);
+
+  const upsideEl = document.getElementById('r-upside');
+  upsideEl.textContent = pct(upside);
+  upsideEl.className = 'value ' + (upside >= 0 ? 'green' : 'red');
+}
+
+document.getElementById('tickerInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') fetchData();
+});
+</script>
+</body>
+</html>
